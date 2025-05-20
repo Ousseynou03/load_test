@@ -5,15 +5,45 @@ import io.gatling.core.Predef._
 import io.gatling.http.Predef._
 import io.gatling.jdbc.Predef._
 
+import java.util.Base64
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+import java.security.MessageDigest
+
 import scala.language.postfixOps
 import sys.process._
 
 
 object ArchiveNF {
-  private val tempoDownload : Int = System.getProperty("tempoDownload", "500").toInt
-  private val pasPacing : Int = 0
- // private val urlGemma : String = "https://localhost:8080/"
-  private val urlGemma: String = System.getProperty("host", "https://localhost:8080/")
+
+  ///////////////////////////
+  // Signature Helper Method
+  def computeSignatureFull(user: String, passwordmd5: String, timestamp: String, body: String): (String, String) = {
+    val bodymd5 = if (body.isEmpty) "" else {
+      val md = MessageDigest.getInstance("MD5")
+      md.digest(body.getBytes("UTF-8")).map("%02x".format(_)).mkString
+    }
+
+    val webservice = "rovercash/nf/archive"
+    val request = s"POST:/$webservice?body=$bodymd5&timestamp=$timestamp&user=$user"
+
+    val hmacSha256 = Mac.getInstance("HmacSHA256")
+    val secretKey = new SecretKeySpec(passwordmd5.getBytes("UTF-8"), "HmacSHA256")
+    hmacSha256.init(secretKey)
+
+    val hmac = hmacSha256.doFinal(request.getBytes("UTF-8"))
+    val signature = Base64.getEncoder.encodeToString(hmac)
+
+    val retour = s"body=$bodymd5&timestamp=$timestamp&user=$user&signature=$signature"
+    (signature, retour)
+  }
+
+  ///////////////////////////
+  // Configuration Variables
+  private val tempoDownload: Int = System.getProperty("tempoDownload", "500").toInt
+  private val pasPacing: Int = 0
+
+
 
 
   private val FichierPath: String = System.getProperty("dataDir", "src/test/resources/GEMMA/")
@@ -45,21 +75,33 @@ object ArchiveNF {
         .group("LMB") {
           exec(flushSessionCookies)
 
-            .exec {  session =>
-              val theShell = (theScript + session("user").as[String] + " " + session("password").as[String])
-              val shellReturn = (theShell).!!
+            .exec { session =>
+              val user = session("user").as[String]
+              val passwordmd5 = session("password").as[String]
+              val timestamp = System.currentTimeMillis().toString
+              val body = ""
 
-              session.set("signature", shellReturn)
+              val (signatureOnly, fullRetour) = computeSignatureFull(user, passwordmd5, timestamp, body)
+
+              println(s"[DEBUG] Timestamp: $timestamp")
+              println(s"[DEBUG] Signature (for URL): $signatureOnly")
+              println(s"[DEBUG] Retour complet (shell style): $fullRetour")
+
+              session
+                .set("timestamp", timestamp)
+                .set("signature", signatureOnly)
             }
+
+
             .exec(http("Message")
-              .post(urlGemma+"ws/rovercash/nf/archive?body=&timestamp=${timestamp}&user=${user}&signature=${signature}' -H 'Content-Type: multipart/form-data;' -F id_terminal=${id_terminal} -F filedata=@/apps/lmb/tmp/PACK_NF/ARCHIVE_${numCaisse}_20250505000000.zip")
+              .post("ws/rovercash/nf/archive?body=&timestamp=${timestamp}&user=${user}&signature=${signature}' -H 'Content-Type: multipart/form-data;' -F id_terminal=${id_terminal} -F filedata=@src/test/resources/Archirve/ARCHIVE_${numCaisse}_20250505000000.zip")
               .requestTimeout(60 seconds)
               .check(status.in(200,201))
               .check(jsonPath("$.messages[*].contenu.filename").findAll.optional.saveAs("directsURLS"))
             )
         }
 
-        .doIfOrElse( session => session.attributes.contains("directsURLS"))
+/*        .doIfOrElse( session => session.attributes.contains("directsURLS"))
         {
           foreach("${directsURLS}", "Url") {
             exec(http("Download")
@@ -82,7 +124,7 @@ object ArchiveNF {
       {
         exec { session => session.set("pacing", ((session("pacing").as[String].toInt + pasPacing ).toString))}
 
-      }
+      }*/
 
     }
 }
