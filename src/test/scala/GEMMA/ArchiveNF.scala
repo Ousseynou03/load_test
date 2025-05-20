@@ -94,7 +94,7 @@ object ArchiveNF {
 
 
             .exec(http("Message")
-              .post("ws/rovercash/nf/archive?body=&timestamp=${timestamp}&user=${user}&signature=${signature}' -H 'Content-Type: multipart/form-data;' -F id_terminal=${id_terminal} -F filedata=@src/test/resources/Archirve/ARCHIVE_${numCaisse}_20250505000000.zip")
+              .post("ws/rovercash/nf/archive?body=&timestamp=${timestamp}&user=${user}&signature=${signature}' -H 'Content-Type: multipart/form-data;' -F id_terminal=${id_terminal} -F filedata=@src/test/resources/Archirve/ARCHIVE_001_20250505000000.zip")
               .requestTimeout(60 seconds)
               .check(status.in(200,201))
               .check(jsonPath("$.messages[*].contenu.filename").findAll.optional.saveAs("directsURLS"))
