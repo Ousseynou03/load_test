@@ -79,22 +79,35 @@ object ArchiveNF {
               val user = session("user").as[String]
               val passwordmd5 = session("password").as[String]
               val timestamp = System.currentTimeMillis().toString
-              val body = ""
+              val body = ""  // ou le contenu que tu veux envoyer en body
+
+              val bodymd5 = if (body.isEmpty) "" else {
+                val md = java.security.MessageDigest.getInstance("MD5")
+                md.digest(body.getBytes("UTF-8")).map("%02x".format(_)).mkString
+              }
 
               val (signatureOnly, fullRetour) = computeSignatureFull(user, passwordmd5, timestamp, body)
 
               println(s"[DEBUG] Timestamp: $timestamp")
+              println(s"[DEBUG] BodyMD5: $bodymd5")
               println(s"[DEBUG] Signature (for URL): $signatureOnly")
               println(s"[DEBUG] Retour complet (shell style): $fullRetour")
 
               session
                 .set("timestamp", timestamp)
                 .set("signature", signatureOnly)
+                .set("bodymd5", bodymd5)
             }
 
 
+
             .exec(http("Message")
-              .post("ws/rovercash/nf/archive?body=&timestamp=${timestamp}&user=${user}&signature=${signature}' -H 'Content-Type: multipart/form-data;' -F id_terminal=${id_terminal} -F filedata=@src/test/resources/Archirve/ARCHIVE_001_20250505000000.zip")
+             // .post("ws/rovercash/nf/archive?body=${bodymd5}&timestamp=${timestamp}&user=${user}&signature=${signature} -H 'Content-Type: multipart/form-data;' -F id_terminal=${id_terminal} -F filedata=@src/test/resources/Archirve/ARCHIVE_001_20250505000000.zip")
+             .post("ws/rovercash/nf/archive?body=${bodymd5}&timestamp=${timestamp}&user=${user}&signature=${signature}")
+              .header("Content-Type", "multipart/form-data")
+              .formParam("id_terminal", "${id_terminal}")
+              .bodyPart(RawFileBodyPart("filedata", "src/test/resources/Archirve/ARCHIVE_001_20250505000000.zip"))
+              .asMultipartForm
               .requestTimeout(60 seconds)
               .check(status.in(200,201))
               .check(jsonPath("$.messages[*].contenu.filename").findAll.optional.saveAs("directsURLS"))
