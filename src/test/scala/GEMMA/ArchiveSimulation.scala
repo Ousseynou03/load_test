@@ -2,53 +2,81 @@ package GEMMA
 
 import io.gatling.core.Predef._
 import io.gatling.http.Predef._
-import java.util.Base64
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
-import java.security.MessageDigest
+import java.util.Base64
 
 class ArchiveSimulation extends Simulation {
 
   val httpProtocol = http
-    .baseUrl("https://gemma-perf.galerieslafayette.store/ws")
+    .baseUrl("https://gemma-perf.galerieslafayette.store")
+    .disableWarmUp
 
+  // Paramètres fixes
   val user = "edi17406689565"
   val passwordMd5 = "$2y$10$fhnNan2dzUC0KstCLk0DB.pcmiL.cGm8IMdkueDubmSIl/DFk0OK2"
-  val timestamp = System.currentTimeMillis() / 1000
   val body = ""
 
-  // Debug: Print timestamp
-  println(s"[DEBUG] Timestamp: $timestamp")
-
-  val bodyMd5 = if (body.isEmpty) "" else {
-    val md = MessageDigest.getInstance("MD5")
-    md.digest(body.getBytes("UTF-8")).map("%02x".format(_)).mkString
-  }
-
-  val request = s"POST:/rovercash/nf/archive?body=$bodyMd5&timestamp=$timestamp&user=$user"
-
-  val secretKey = new SecretKeySpec(passwordMd5.getBytes("UTF-8"), "HmacSHA256")
-  val mac = Mac.getInstance("HmacSHA256")
-  mac.init(secretKey)
-  val requestHmac = mac.doFinal(request.getBytes("UTF-8"))
-  val signature = Base64.getEncoder.encodeToString(requestHmac)
-
-  // Debug: Print signature
-  println(s"[DEBUG] Signature: $signature")
-
-  val endpointWs = s"/rovercash/nf/archive?body=&timestamp=$timestamp&user=$user&signature=$signature"
-
   val scn = scenario("Archive Scenario")
+    .exec(session => {
+      // Calcul du timestamp (identique au script shell)
+      val timestamp = System.currentTimeMillis / 1000
+
+      // Calcul du MD5 du body
+      val bodyMd5 = if (body.isEmpty) "" else {
+        val md = MessageDigest.getInstance("MD5")
+        val digest = md.digest(body.getBytes(StandardCharsets.UTF_8))
+        digest.map("%02x".format(_)).mkString
+      }
+
+      // Construction de la chaîne à signer
+      val requestString = s"POST:/rovercash/nf/archive?body=$bodyMd5&timestamp=$timestamp&user=$user"
+
+      // Calcul du HMAC-SHA256
+      val mac = Mac.getInstance("HmacSHA256")
+      val secretKey = new SecretKeySpec(passwordMd5.getBytes(StandardCharsets.UTF_8), "HmacSHA256")
+      mac.init(secretKey)
+      val hmacBytes = mac.doFinal(requestString.getBytes(StandardCharsets.UTF_8))
+
+      // Conversion en hexadécimal
+      val hmacHex = hmacBytes.map("%02x".format(_)).mkString
+
+      // Encodage Base64 sans padding
+      val signature = Base64.getEncoder.withoutPadding().encodeToString(hmacHex.getBytes(StandardCharsets.UTF_8))
+
+      // Construction de l'URL finale
+      val endpointWs = s"/ws/rovercash/nf/archive?body=&timestamp=$timestamp&user=$user&signature=$signature"
+
+      // Debug logging
+      println(s"[DEBUG] Request String: $requestString")
+      println(s"[DEBUG] HMAC Hex: $hmacHex")
+      println(s"[DEBUG] Signature: $signature")
+      println(s"[DEBUG] Final URL: $endpointWs")
+
+      // Mise à jour de la session
+      session
+        .set("timestamp", timestamp.toString)
+        .set("endpointWs", endpointWs)
+    })
     .exec(
       http("Post Archive")
-       .post(s"$endpointWs -H 'Content-Type: multipart/form-data;' -F id_terminal=10001 -F filedata=src/test/resources/Archirve/ARCHIVE_001_20250505000000.zip")
-
-      /*        .post(endpointWs)
-              .header("Content-Type", "multipart/form-data")
-              .formParam("id_terminal", "10001")
-              .formUpload("filedata", "src/test/resources/Archirve/ARCHIVE_001_20250505000000.zip")*/
+        .post("${endpointWs}")
+        .header("Content-Type", "multipart/form-data")
+        .formParam("id_terminal", "10001")
+        .formUpload("filedata", "./src/test/resources/data/GEMMA/Archirve/ARCHIVE_001_20250505000000.zip")
     )
 
-  setUp(scn.inject(atOnceUsers(1))).protocols(httpProtocol)
+
+  setUp(
+    scn.inject(atOnceUsers(1))
+  ).protocols(httpProtocol)
 }
 
+
+
+
+
+//  .post(s"$endpointWs -H 'Content-Type: multipart/form-data;' -F id_terminal=10001 -F filedata=./src/test/resources/data/Archirve/ARCHIVE_001_20250505000000.zip")
+// Cette requête post n'est pas structurer pour Gatling
