@@ -18,7 +18,7 @@ object ArchiveNF {
 
   ///////////////////////////
   // Signature Helper Method
-  def computeSignatureFull(user: String, passwordmd5: String, timestamp: String, body: String): (String, String) = {
+/*  def computeSignatureFull(user: String, passwordmd5: String, timestamp: String, body: String): (String, String) = {
     val bodymd5 = if (body.isEmpty) "" else {
       val md = MessageDigest.getInstance("MD5")
       md.digest(body.getBytes("UTF-8")).map("%02x".format(_)).mkString
@@ -36,7 +36,7 @@ object ArchiveNF {
 
     val retour = s"body=$bodymd5&timestamp=$timestamp&user=$user&signature=$signature"
     (signature, retour)
-  }
+  }*/
 
   ///////////////////////////
   // Configuration Variables
@@ -75,10 +75,11 @@ object ArchiveNF {
         .group("LMB") {
           exec(flushSessionCookies)
 
+/*
             .exec { session =>
               val user = session("user").as[String]
               val passwordmd5 = session("password").as[String]
-              val timestamp = System.currentTimeMillis().toString
+              val timestamp = (System.currentTimeMillis() / 1000).toString
               val body = ""  // ou le contenu que tu veux envoyer en body
 
               val bodymd5 = if (body.isEmpty) "" else {
@@ -98,8 +99,49 @@ object ArchiveNF {
                 .set("signature", signatureOnly)
                 .set("bodymd5", bodymd5)
             }
+*/
+      .exec { session =>
+        val user = session("user").as[String]
+        val passwordmd5 = session("password").as[String]  // password en clair, pas hex à parser !
+        val timestamp = (System.currentTimeMillis() / 1000).toString
+        val body = ""
 
+        // Calcul MD5 du body (hex string), ou chaîne vide si body vide
+        val bodymd5 = if (body.isEmpty) "" else {
+          val md = java.security.MessageDigest.getInstance("MD5")
+          md.digest(body.getBytes("UTF-8")).map("%02x".format(_)).mkString
+        }
 
+        // Construction de la chaîne request à signer
+        val webservice = "rovercash/nf/archive"
+        val request = s"POST:/$webservice?body=$bodymd5&timestamp=$timestamp&user=$user"
+
+        // Création clé HMAC avec passwordmd5 **tel quel** en UTF-8
+        val hmacSha256 = javax.crypto.Mac.getInstance("HmacSHA256")
+        val secretKey = new javax.crypto.spec.SecretKeySpec(passwordmd5.getBytes("UTF-8"), "HmacSHA256")
+        hmacSha256.init(secretKey)
+
+        // Calcul HMAC
+        val hmac = hmacSha256.doFinal(request.getBytes("UTF-8"))
+       // val signature = hmac.map("%02x".format(_)).mkString
+
+        val signature = java.util.Base64.getEncoder.encodeToString(hmac)
+
+        // Construction de la chaîne complète pour la requête
+        val fullRetour = s"body=$bodymd5&timestamp=$timestamp&user=$user&signature=$signature"
+
+        // Debug
+        println(s"[DEBUG] Timestamp: $timestamp")
+        println(s"[DEBUG] BodyMD5: $bodymd5")
+        println(s"[DEBUG] Signature: $signature")
+        println(s"[DEBUG] Full retour: $fullRetour")
+
+        // Mise à jour session Gatling
+        session
+          .set("timestamp", timestamp)
+          .set("bodymd5", bodymd5)
+          .set("signature", signature)
+      }
 
             .exec(http("Message")
              // .post("ws/rovercash/nf/archive?body=${bodymd5}&timestamp=${timestamp}&user=${user}&signature=${signature} -H 'Content-Type: multipart/form-data;' -F id_terminal=${id_terminal} -F filedata=@src/test/resources/Archirve/ARCHIVE_001_20250505000000.zip")
