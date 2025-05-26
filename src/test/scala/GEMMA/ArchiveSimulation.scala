@@ -19,9 +19,21 @@ class ArchiveSimulation extends Simulation {
   val passwordMd5 = "$2y$10$fhnNan2dzUC0KstCLk0DB.pcmiL.cGm8IMdkueDubmSIl/DFk0OK2"
   val body = ""
 
+  // Compteur pour les numéros de caisse
+  val numCaisseIterator = Iterator.from(1)
+
   val scn = scenario("Archive Scenario")
     .exec(session => {
-      // Calcul du timestamp (identique au script shell)
+      // Récupère le numéro de caisse et le formate sur 3 chiffres
+      val currentNumber = numCaisseIterator.next()
+      val numCaisse = f"$currentNumber%03d" // Format "001", "002", etc.
+
+      // Met à jour la session
+      session.set("numCaisse", numCaisse)
+    })
+    .exec(session => {
+      // Récupère le numéro de caisse depuis la session
+      val numCaisse = session("numCaisse").as[String]
       val timestamp = System.currentTimeMillis / 1000
 
       // Calcul du MD5 du body
@@ -49,34 +61,32 @@ class ArchiveSimulation extends Simulation {
       // Construction de l'URL finale
       val endpointWs = s"/ws/rovercash/nf/archive?body=&timestamp=$timestamp&user=$user&signature=$signature"
 
+      // Chemin du fichier dynamique utilisant numCaisse
+     // val filePath = "ARCHIVE_${numCaisse}_20250505000000.zip"
+      val filePath = s"./Archirve/ARCHIVE_${numCaisse}_20250505000000.zip"
+
       // Debug logging
-      println(s"[DEBUG] Request String: $requestString")
-      println(s"[DEBUG] HMAC Hex: $hmacHex")
+      println(s"[DEBUG] Numéro de Caisse: $numCaisse")
+      println(s"[DEBUG] Chemin du Fichier: $filePath")
+      println(s"[DEBUG] Chaîne de Requête: $requestString")
       println(s"[DEBUG] Signature: $signature")
-      println(s"[DEBUG] Final URL: $endpointWs")
+      println(s"[DEBUG] URL Finale: $endpointWs")
 
       // Mise à jour de la session
       session
         .set("timestamp", timestamp.toString)
         .set("endpointWs", endpointWs)
+        .set("filePath", filePath)
     })
     .exec(
       http("Post Archive")
         .post("${endpointWs}")
         .header("Content-Type", "multipart/form-data")
         .formParam("id_terminal", "10001")
-        .formUpload("filedata", "./src/test/resources/data/GEMMA/Archirve/ARCHIVE_001_20250505000000.zip")
+        .formUpload("filedata", "${filePath}")
     )
-
 
   setUp(
     scn.inject(atOnceUsers(1))
   ).protocols(httpProtocol)
 }
-
-
-
-
-
-//  .post(s"$endpointWs -H 'Content-Type: multipart/form-data;' -F id_terminal=10001 -F filedata=./src/test/resources/data/Archirve/ARCHIVE_001_20250505000000.zip")
-// Cette requête post n'est pas structurer pour Gatling
