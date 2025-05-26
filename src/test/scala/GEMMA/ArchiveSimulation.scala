@@ -41,10 +41,12 @@ class ArchiveSimulation extends Simulation {
   val scn = scenario("Archive Scenario")
     .exec(
       http("Post Archive")
-        .post(endpointWs)
-        .header("Content-Type", "multipart/form-data")
-        .formParam("id_terminal", "10001")
-        .formUpload("filedata", "src/test/resources/Archirve/ARCHIVE_001_20250505000000.zip")
+       .post(s"$endpointWs -H 'Content-Type: multipart/form-data;' -F id_terminal=10001 -F filedata=src/test/resources/Archirve/ARCHIVE_001_20250505000000.zip")
+
+      /*        .post(endpointWs)
+              .header("Content-Type", "multipart/form-data")
+              .formParam("id_terminal", "10001")
+              .formUpload("filedata", "src/test/resources/Archirve/ARCHIVE_001_20250505000000.zip")*/
     )
 
   setUp(scn.inject(atOnceUsers(1))).protocols(httpProtocol)
