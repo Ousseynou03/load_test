@@ -8,9 +8,13 @@ import java.security.MessageDigest
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import java.util.Base64
+import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration.DurationInt
 
 class ArchiveSimulation extends Simulation {
+
+  // Déclaration du compteur global
+  private val globalCounter = new AtomicInteger(0)
 
   val httpProtocol = http
     .baseUrl("https://gemma-perf.galerieslafayette.store")
@@ -73,10 +77,10 @@ class ArchiveSimulation extends Simulation {
         .set("idTerminal", idTerminal)
         .set("callCount", 0) // Initialisation du compteur
     })
-    .exec { session =>
+/*    .exec { session =>
       val currentCount = session("callCount").asOption[Int].getOrElse(0)
       session.set("callCount", currentCount + 1)
-    }
+    }*/
 
     .exec(
       http("Post Archive")
@@ -86,13 +90,14 @@ class ArchiveSimulation extends Simulation {
         .formUpload("filedata", "${filePath}")
     )
     .exec { session =>
-      println(s"[DEBUG] Requête #${session("callCount").as[Int]} effectuée pour l'utilisateur ${session("identifiant").as[String]}")
+      val count = globalCounter.incrementAndGet() // Incrément global
+      println(s"[GLOBAL DEBUG] Requête HTTP #$count - Utilisateur : ${session("identifiant").as[String]}")
       session
     }
 
   setUp(
     scn.inject(
-        atOnceUsers(1)
+        atOnceUsers(10)
       )
   )
     .protocols(httpProtocol)
