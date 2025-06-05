@@ -71,7 +71,13 @@ class ArchiveSimulation extends Simulation {
         .set("endpointWs", endpointWs)
         .set("filePath", filePath)
         .set("idTerminal", idTerminal)
+        .set("callCount", 0) // Initialisation du compteur
     })
+    .exec { session =>
+      val currentCount = session("callCount").asOption[Int].getOrElse(0)
+      session.set("callCount", currentCount + 1)
+    }
+
     .exec(
       http("Post Archive")
         .post("${endpointWs}")
@@ -79,11 +85,15 @@ class ArchiveSimulation extends Simulation {
         .formParam("id_terminal", "${idTerminal}")
         .formUpload("filedata", "${filePath}")
     )
+    .exec { session =>
+      println(s"[DEBUG] Requête #${session("callCount").as[Int]} effectuée pour l'utilisateur ${session("identifiant").as[String]}")
+      session
+    }
 
   setUp(
     scn.inject(
-      atOnceUsers(995)
-     // rampUsers(995) during (60.seconds) // ou atOnceUsers(995)
-    )
-  ).protocols(httpProtocol)
+        atOnceUsers(1)
+      )
+  )
+    .protocols(httpProtocol)
 }
